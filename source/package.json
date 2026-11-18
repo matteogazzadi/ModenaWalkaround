@@ -1,0 +1,12 @@
+{
+  "name": "modena-walkaround",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:readable": "node build.mjs --readable"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang=it>
+<head>
+<meta charset=utf-8>
+<title>Modena Walkaround</title>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=theme-color content=#1c120c>
+<style>
+/* body class: l = loading, m = menu, g = walking */
+html { background: #1c120c; }
+body {
+  position: fixed; inset: 0; margin: 0; overflow: hidden; background: radial-gradient(#5a3422, #1c120c 70%);
+  font: 600 clamp(13px, .65vw + .85vh, 30px)/1.4 Georgia, 'Times New Roman', serif; color: #fbf1e3;
+  -webkit-user-select: none; user-select: none;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  body { width: 100dvh; height: 100dvw; inset: auto; top: 0; left: 0; transform-origin: 0 0; transform: rotate(90deg) translateY(-100%); }
+}
+canvas#c { position: absolute; width: 100%; height: 100%; touch-action: none; cursor: crosshair; transition: filter 1s, transform 1s, opacity 1.5s; }
+body:not(.g) canvas#c { filter: blur(.7vmax) brightness(.55) saturate(1.1); transform: scale(1.04); }
+.l canvas#c { opacity: 0; }
+#m {
+  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: min(1.8em, 5vmin);
+  padding: 1em; text-align: center; background: radial-gradient(#1c120c00 30%, #1c120ccc); transition: opacity .5s, visibility .5s;
+}
+.g #m, .m #l, .l #g { opacity: 0; visibility: hidden; }
+h1 {
+  margin: 0; font: italic 700 5em/0.95 Georgia, serif; letter-spacing: .02em; color: #0000;
+  background: linear-gradient(#fff6e6 30%, #f2c27f 70%, #c9763f); -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(0 .05em .2em #000c);
+}
+.sub { margin: -.6em 0 0; font-size: .85em; letter-spacing: .3em; text-transform: uppercase; color: #f2c27f; font-family: system-ui, sans-serif; font-weight: 700; }
+p { margin: 0; }
+#a { display: grid; width: 30em; max-width: 100%; }
+#a > * { grid-area: 1/1; transition: opacity .6s, visibility .6s; }
+#p { height: .45em; margin: .4em 0 1em; overflow: hidden; border-radius: 1em; background: #1c120c; box-shadow: 0 0 0 2px #f2c27f80; }
+#b { display: block; height: 100%; background: linear-gradient(90deg, #c9763f, #ffe0a8); transform: scaleX(0); transform-origin: 0; transition: transform .3s; }
+#s { font: 700 .8em system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+.e #p { visibility: hidden; } .e #s { text-transform: none; letter-spacing: 0; font-size: 1em; }
+#g { display: grid; gap: min(1.1em, 3vmin); }
+button {
+  display: flex; align-items: center; justify-content: center; padding: .8em 1.4em; border: 0; border-radius: .5em;
+  background: #fbf1e3; color: #3a1f12; box-shadow: inset 0 -.2em #0003, 0 .3em 1em #0009; cursor: pointer;
+  font: 800 1em/1.2 system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; transition: transform .12s, filter .12s;
+}
+button:hover { transform: translateY(-.1em); filter: brightness(1.08); }
+button:active { transform: translateY(.08em); }
+:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+#go { padding: .9em; font-size: 1.25em; background: linear-gradient(#ffe0a8, #e0904f); box-shadow: inset 0 -.2em #0003, 0 0 2em #e0904f99; }
+.box { padding: .9em 1.4em; border-radius: .7em; background: #1c120cb8; font: 600 .78em/1.5 system-ui, sans-serif; letter-spacing: .04em; }
+#k { display: flex; justify-content: center; gap: 1.8em; text-align: left; }
+#k p { display: grid; grid-template-columns: auto auto; align-content: start; align-items: center; gap: .45em .8em; }
+#k p + p { padding-left: 1.8em; border-left: 2px solid #f2c27f40; }
+#k i { justify-self: end; font-style: normal; display: flex; gap: .25em; }
+#k b { min-width: 1.1em; padding: .15em .45em; border-radius: .3em; background: #fbf1e3; color: #3a1f12; text-align: center; box-shadow: inset 0 -.12em #0004; }
+#q { display: flex; align-items: center; gap: .4em; padding: .4em; }
+#q span { flex: 1; color: #f2c27f; text-transform: uppercase; letter-spacing: .12em; }
+#q button { flex: 1.2; padding: .6em 0; background: none; box-shadow: none; color: #fbf1e3; font-size: .95em; }
+#q button:hover { background: #f2c27f33; }
+#q .on { background: linear-gradient(#ffe0a8, #e0904f); color: #3a1f12; pointer-events: none; }
+#tm { display: flex; align-items: center; gap: .9em; }
+#tm span { color: #f2c27f; text-transform: uppercase; letter-spacing: .12em; }
+#tm input { flex: 1; accent-color: #e0904f; }
+#hv { min-width: 3.2em; font-variant-numeric: tabular-nums; }
+#h { display: none; }
+@media (pointer: coarse), (max-height: 34em) { #k { display: none; } }
+@media (pointer: coarse) { #h { display: block; } }
+#o { position: absolute; top: .6em; right: .6em; display: none; padding: .3em .7em; font-size: 1.3em; background: #1c120cd9; color: #fbf1e3; box-shadow: inset 0 0 0 2px #f2c27f; }
+@media (pointer: coarse) { .g #o { display: block; } }
+#z { position: absolute; left: 50%; bottom: 1.2em; transform: translateX(-50%); font: italic 700 1.3em Georgia, serif; color: #fff8ec; text-shadow: 0 .05em .4em #000c; opacity: 0; transition: opacity .6s; pointer-events: none; white-space: nowrap; }
+.g #z { opacity: .9; }
+#t { position: absolute; left: 50%; top: 18%; transform: translate(-50%, -.5em); padding: .5em 1.2em; border-radius: 2em; background: #1c120cb0; font: 700 .9em system-ui, sans-serif; letter-spacing: .1em; text-transform: uppercase; opacity: 0; transition: opacity .4s, transform .4s; pointer-events: none; }
+#t.on { opacity: 1; transform: translate(-50%, 0); }
+#map { position: absolute; right: 1em; bottom: 1em; width: 9em; height: 9em; border-radius: 50%; box-shadow: 0 0 0 3px #fbf1e3cc, 0 .3em 1em #0008; opacity: .92; pointer-events: none; }
+.m #map, .l #map { display: none; }
+#st { position: absolute; left: .6em; top: .6em; font: 600 .75em ui-monospace, monospace; color: #fff; text-shadow: 0 0 .3em #000; }
+#cr { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #fff9; opacity: 0; }
+.g #cr { opacity: 1; }
+</style>
+</head>
+<body class=l>
+<canvas id=c></canvas>
+<div id=cr></div>
+<div id=z></div>
+<div id=t></div>
+<canvas id=map width=260 height=260></canvas>
+<div id=st style="display:none"></div>
+<button id=o aria-label=Menu>≡</button>
+<div id=m>
+  <h1>Modena</h1>
+  <p class=sub>Duomo · Ghirlandina · Piazza Grande</p>
+  <div id=a>
+    <div id=l><p id=p><span id=b></span></p><p id=s>Costruisco la città…</p></div>
+    <div id=g>
+      <button id=go>Entra in piazza</button>
+      <div id=k class=box>
+        <p><span>Guardati intorno</span><i>mouse</i><span>Cammina</span><i><b>W</b><b>A</b><b>S</b><b>D</b></i><span>Corri</span><i><b>Shift</b></i><span>Volo libero</span><i><b>F</b></i><span>Su / giù in volo</span><i><b>E</b><b>Q</b></i></p>
+        <p><span>Punti di vista</span><i><b>1</b>–<b>6</b></i><span>Ora del giorno</span><i><b>,</b><b>.</b></i><span>Il tempo scorre</span><i><b>T</b></i><span>Campane</span><i><b>B</b></i><span>Mappa · Audio</span><i><b>N</b><b>M</b></i></p>
+      </div>
+      <div id=h class=box>Tieni un dito a sinistra per camminare, trascina a destra per guardarti intorno. Il tasto ≡ apre il menu.</div>
+      <div id=tm class=box><span>Ora</span><input id=hr type=range min=4.5 max=23.5 step=.05 value=17.6><b id=hv>17:36</b></div>
+      <div id=q class=box><span>Dettaglio</span><button data-q=low>Basso</button><button data-q=medium>Medio</button><button data-q=high>Alto</button></div>
+    </div>
+  </div>
+</div>
+<script>
+/*SCRIPT*/
+</script>
+</body>
+</html>
