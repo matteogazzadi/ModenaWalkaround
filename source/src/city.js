@@ -79,7 +79,8 @@ function house(x0, z0, x1, z1, o) {
     }
   }
   solid(gx0, gz0, gx1, gz1);
-  hipRoof(x0, z0, x1, z1, H, 0.42, 0.55, { m: M.TILE, c: [1, 1, 1], p: [0, 0, 0, rnd()] });
+  const ridge = hipRoof(x0, z0, x1, z1, H, 0.42, 0.55, { m: M.TILE, c: [1, 1, 1], p: [0, 0, 0, rnd()] });
+  roofClutter(x0, z0, x1, z1, H, ridge, col);
   return H;
 }
 
@@ -106,6 +107,27 @@ function block(x0, z0, x1, z1, por = 0, fl = [3, 5]) {
   }
 }
 
+// chimneys (the little hip-roofed "comignoli" of the Emilian towns) and the odd TV aerial
+function roofClutter(x0, z0, x1, z1, H, top, col) {
+  const n = 1 + ((rnd() * 2.2) | 0), Sc = { m: M.PLAST, c: col.map((v) => v * 0.92), p: [0, 0, 0, rnd() * 9] };
+  const ST = S_(M.TILE, [1, 1, 1], [0, 0, 0, rnd()]);
+  for (let i = 0; i < n; i++) {
+    const x = x0 + 1.3 + rnd() * Math.max(0.1, x1 - x0 - 2.6), z = z0 + 1.3 + rnd() * Math.max(0.1, z1 - z0 - 2.6), w = 0.32 + rnd() * 0.12;
+    const yt = top + 0.5 + rnd() * 0.9;
+    box(x - w, H, z - w, x + w, yt, z + w, Sc, 1 | 2 | 4 | 8);
+    // the little openings under the cap
+    box(x - w - 0.05, yt, z - w - 0.05, x + w + 0.05, yt + 0.08, z + w + 0.05, Sc);
+    box(x - w + 0.05, yt + 0.08, z - w + 0.05, x + w - 0.05, yt + 0.32, z + w - 0.05, S_(M.DARK, [0.05, 0.05, 0.05]), 1 | 2 | 4 | 8);
+    for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(x + dx * (w - 0.04) - 0.04, yt + 0.08, z + dz * (w - 0.04) - 0.04, x + dx * (w - 0.04) + 0.04, yt + 0.32, z + dz * (w - 0.04) + 0.04, Sc, 15);
+    hipRoof(x - w, z - w, x + w, z + w, yt + 0.32, 0.6, 0.12, ST);
+  }
+  if (rnd() < 0.3) {
+    const x = (x0 + x1) / 2 + (rnd() - 0.5) * 2, z = (z0 + z1) / 2 + (rnd() - 0.5) * 2, Sm = S_(M.METAL, [0.5, 0.5, 0.52]);
+    cyl(x, z, top - 0.6, top + 2.6, 0.025, 0.02, 4, Sm);
+    for (let k = 0; k < 4; k++) box(x - 0.6 + k * 0.08, top + 1.6 + k * 0.25, z - 0.012, x + 0.6 - k * 0.08, top + 1.63 + k * 0.25, z + 0.012, Sm);
+  }
+}
+
 // cheap far-away town: boxes with roofs, no detail on the ground floor
 function farBlock(x0, z0, x1, z1) {
   const H = 10 + rnd() * 9, col = pick(PLASTER), seed = rnd() * 100;
@@ -113,7 +135,10 @@ function farBlock(x0, z0, x1, z1) {
     const { F, a, b } = sideFrame(s, x0, z0, x1, z1);
     rect(F, a, 0, b, H, 0, { m: M.WIN, c: col, p: [3, 1.1, 3.3, seed + s], du: -a });
   }
-  hipRoof(x0, z0, x1, z1, H, 0.42, 0.5, { m: M.TILE, c: [1, 1, 1], p: [0, 0, 0, rnd()] });
+  const top = hipRoof(x0, z0, x1, z1, H, 0.42, 0.5, { m: M.TILE, c: [1, 1, 1], p: [0, 0, 0, rnd()] });
+  const x = x0 + 2 + rnd() * (x1 - x0 - 4), z = z0 + 2 + rnd() * (z1 - z0 - 4);
+  box(x - 0.4, H, z - 0.4, x + 0.4, top + 1, z + 0.4, { m: M.PLAST, c: col, p: [0, 0, 0, 0] }, 15);
+  hipRoof(x - 0.4, z - 0.4, x + 0.4, z + 0.4, top + 1, 0.6, 0.12, S_(M.TILE));
 }
 
 // ---------------------------------------------------------------------------
@@ -523,6 +548,60 @@ function buildCity() {
     if (x > -160 && x < 160 && z > -160 && z < 160) continue;
     const g = 6 + rnd() * 3; farBlock(x + g / 2, z + g / 2, x + 34 - g / 2, z + 34 - g / 2);
   }
+  // café tables with umbrellas along the porticoes of Piazza Grande and Piazza della Torre
+  rnd = mulberry(321);
+  const UMB = [[0.92, 0.88, 0.8], [0.62, 0.12, 0.12], [0.9, 0.86, 0.75], [0.2, 0.3, 0.22]];
+  const cafe = (x, z, col) => {
+    const Sw = S_(M.METAL, [0.15, 0.15, 0.15]), St = S_(M.MARB, [0.9, 0.88, 0.84]), Sc = S_(M.WOOD, [0.45, 0.3, 0.18]);
+    cyl(x, z, 0.03, 0.72, 0.03, 0.03, 6, Sw); cyl(x, z, 0.72, 0.76, 0.38, 0.38, 12, St, true);
+    for (let k = 0; k < 3; k++) {
+      const a = k * 2.1 + rnd(), cx = x + Math.cos(a) * 0.65, cz = z + Math.sin(a) * 0.65;
+      box(cx - 0.2, 0.42, cz - 0.2, cx + 0.2, 0.46, cz + 0.2, Sc);
+      for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(cx + dx * 0.17 - 0.015, 0.03, cz + dz * 0.17 - 0.015, cx + dx * 0.17 + 0.015, 0.42, cz + dz * 0.17 + 0.015, Sw, 15);
+      const bx = cx + Math.cos(a) * 0.2, bz = cz + Math.sin(a) * 0.2;
+      box(bx - 0.18 * Math.abs(Math.sin(a)) - 0.02, 0.46, bz - 0.18 * Math.abs(Math.cos(a)) - 0.02, bx + 0.18 * Math.abs(Math.sin(a)) + 0.02, 0.85, bz + 0.18 * Math.abs(Math.cos(a)) + 0.02, Sc);
+    }
+    solid(x - 0.6, z - 0.6, x + 0.6, z + 0.6);
+  };
+  const umbrella = (x, z, col) => {
+    cyl(x, z, 0.03, 2.5, 0.035, 0.03, 6, S_(M.METAL, [0.5, 0.45, 0.4]));
+    const S = S_(M.FUR, col);
+    pyramid(x, z, 2.15, 2.75, 1.7, 8, 0, S);
+    for (let k = 0; k < 8; k++) { const a0 = (k / 8) * 6.2832, a1 = ((k + 1) / 8) * 6.2832; G.quad([x + Math.cos(a0) * 1.7, 2.15, z + Math.sin(a0) * 1.7], [x + Math.cos(a1) * 1.7, 2.15, z + Math.sin(a1) * 1.7], [x + Math.cos(a1) * 1.7, 1.97, z + Math.sin(a1) * 1.7], [x + Math.cos(a0) * 1.7, 1.97, z + Math.sin(a0) * 1.7], [0, 0, 1, 0, 1, .2, 0, .2], S); }
+    cyl(x, z, 2.75, 2.85, 0.05, 0.02, 4, S_(M.METAL, [0.5, 0.45, 0.4]));
+  };
+  for (let x = -26; x <= 14; x += 4.5) { const c = UMB[((x + 26) / 4.5) % 2 ? 0 : 1]; cafe(x, 49.4, c); if (((x + 26) / 4.5) % 2 === 0) umbrella(x + 2.2, 49.4, c); }
+  for (let z = -22; z <= -6; z += 4.2) { cafe(63, z, UMB[3]); if (Math.round((z + 22) / 4.2) % 2 === 0) umbrella(63, z + 2.1, UMB[2]); }
+
+  // bicycles: this is Modena
+  const bike = (x, z, yaw, col) => {
+    const c = Math.cos(yaw), s = Math.sin(yaw), P2 = (f, y) => [x + s * f, y, z - c * f];
+    const Sf = S_(M.METAL, col), Sk = S_(M.METAL, [0.08, 0.08, 0.08]);
+    const beam = (a, b, r, S) => { // thin square tube from a to b
+      const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], L = Math.hypot(dx, dy, dz);
+      let ux = -dz, uz = dx, ul = Math.hypot(ux, uz) || 1; ux = (ux / ul) * r; uz = (uz / ul) * r;
+      const vy = r;
+      const q = (o1, o2) => G.quad([a[0] + o1[0], a[1] + o1[1], a[2] + o1[2]], [b[0] + o1[0], b[1] + o1[1], b[2] + o1[2]], [b[0] + o2[0], b[1] + o2[1], b[2] + o2[2]], [a[0] + o2[0], a[1] + o2[1], a[2] + o2[2]], [0, 0, L, 0, L, r, 0, r], S);
+      q([ux, vy, uz], [-ux, vy, -uz]); q([-ux, -vy, -uz], [ux, -vy, uz]); q([ux, -vy, uz], [ux, vy, uz]); q([-ux, vy, -uz], [-ux, -vy, -uz]);
+    };
+    for (const f of [-0.52, 0.52]) for (let k = 0; k < 14; k++) { // wheels
+      const a0 = (k / 14) * 6.2832, a1 = ((k + 1) / 14) * 6.2832;
+      beam(P2(f + Math.cos(a0) * 0.33, 0.34 + Math.sin(a0) * 0.33), P2(f + Math.cos(a1) * 0.33, 0.34 + Math.sin(a1) * 0.33), 0.018, Sk);
+    }
+    const bb = P2(0, 0.32), seat = P2(-0.18, 0.78), head = P2(0.42, 0.85);
+    beam(P2(-0.52, 0.34), bb, 0.013, Sf); beam(bb, seat, 0.016, Sf); beam(P2(-0.52, 0.34), seat, 0.012, Sf);
+    beam(bb, head, 0.017, Sf); beam(seat, head, 0.016, Sf); beam(head, P2(0.52, 0.34), 0.014, Sf);
+    beam(P2(-0.27, 0.82), P2(-0.07, 0.82), 0.035, Sk);
+    beam(P2(0.42, 0.95), [head[0] + c * 0.25, 0.95, head[2] + s * 0.25], 0.012, Sk); beam(P2(0.42, 0.95), [head[0] - c * 0.25, 0.95, head[2] - s * 0.25], 0.012, Sk);
+    if (rnd() < 0.5) box(...P2(0.62, 0.7).map((v, i) => v - [0.15, 0, 0.15][i]), ...P2(0.62, 0.95).map((v, i) => v + [0.15, 0, 0.15][i]), S_(M.WOOD, [0.5, 0.38, 0.22])); // a basket
+  };
+  const BIKE = [[0.1, 0.1, 0.1], [0.55, 0.1, 0.1], [0.15, 0.3, 0.5], [0.85, 0.85, 0.8], [0.2, 0.4, 0.25], [0.7, 0.55, 0.2]];
+  for (let i = 0; i < 9; i++) bike(-14 + i * 0.75, 75.1, Math.PI / 2 + 1.57 + (rnd() - 0.5) * 0.15, pick(BIKE));
+  for (let i = 0; i < 7; i++) bike(44 + i * 0.75, 63.2, 3.14 + (rnd() - 0.5) * 0.15, pick(BIKE));
+  for (let i = 0; i < 5; i++) bike(-47.2, -8 - i * 0.75, 1.57 + (rnd() - 0.5) * 0.15, pick(BIKE));
+  for (let i = 0; i < 6; i++) bike(46 + i * 0.75, -32.6, (rnd() - 0.5) * 0.15, pick(BIKE));
+  solid(-14.3, 74.5, -7.7, 75.7); solid(43.7, 62.4, 49.3, 64); solid(-48, -11.3, -46.4, -7.7); solid(45.7, -33.2, 50.3, -32);
+
   // street lamps in the squares
   for (const [x, z] of [[-10, 50], [15, 50], [-30, 30], [36, 15], [50, -28], [70, -10], [-36, -16], [-36, 16], [58, 15.5]]) lampPost(x, z);
   // invisible walls at the edge of the walkable area

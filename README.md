@@ -15,6 +15,7 @@ Ispirato a [Abyssal Garden](https://github.com/Noniv/abyssal-garden).
 |---|---|
 | ![La facciata del Duomo](.github/screenshots/facciata.jpg) | ![La Ghirlandina da Via Lanfranco](.github/screenshots/ghirlandina.jpg) |
 | ![Il centro dall'alto](.github/screenshots/dall-alto.jpg) | ![Il Duomo illuminato di notte](.github/screenshots/notte.jpg) |
+| ![Le absidi e la Ghirlandina controsole da Piazza della Torre](.github/screenshots/piazza-torre.jpg) | |
 
 ## Come provarlo
 
@@ -51,6 +52,9 @@ Funziona offline, non c'è niente da installare.
   la Preda Ringadora e la Bonissima sul suo mensolone.
 - **Le vie intorno**: Via Lanfranco, Piazza della Torre, Corso Duomo, Via Castellaro, Piazza XX Settembre, Via Emilia con i portici,
   case intonacate nei colori di Modena con persiane verdi, botteghe, tetti di coppi.
+- **Grafica**: occlusione ambientale (SSAO), ombre nitide e morbide vicino a te, raggi di luce controsole, finestre con
+  profondità vera e stanze visibili all'interno, fioriere ai davanzali, comignoli e antenne sui tetti.
+- **Vita in piazza**: passanti, tavolini e ombrelloni dei caffè, biciclette parcheggiate.
 - **Luce**: sole con ombre, cielo con nuvole, foschia, tramonto dorato; di notte lampioni, finestre accese, il Duomo illuminato, stelle e luna.
 - **Animali**: passerotti che saltellano e beccano sul selciato (e volano via se ti avvicini), cani a passeggio che si fermano
   ad annusare e ti vengono a salutare scodinzolando, gatti seduti o addormentati sotto i portici, piccioni attorno alla Ghirlandina.

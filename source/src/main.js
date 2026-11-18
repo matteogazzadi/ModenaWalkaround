@@ -14,7 +14,7 @@ const setBar = (f) => { $('b').style.transform = `scaleX(${f})`; };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // ---- quality --------------------------------------------------------------
-const QUAL = { low: { sh: 2048, msaa: 0, dpr: 0.75 }, medium: { sh: 2048, msaa: 4, dpr: 1 }, high: { sh: 4096, msaa: 4, dpr: 1.5 } };
+const QUAL = { low: { sh: 2048, shN: 1024, msaa: 0, dpr: 0.75, ssao: false }, medium: { sh: 2048, shN: 2048, msaa: 4, dpr: 1, ssao: true }, high: { sh: 4096, shN: 4096, msaa: 4, dpr: 1.5, ssao: true } };
 let qName = 'high';
 try { qName = localStorage.getItem('mw-q') || (matchMedia('(pointer:coarse)').matches ? 'low' : (navigator.deviceMemory || 8) <= 4 ? 'medium' : 'high'); } catch (e) { }
 if (!QUAL[qName]) qName = 'high';
@@ -38,6 +38,10 @@ function prog(vs, fs) {
 setBar(0.05); await tick();
 const PM = prog(VS_MAIN, FS_MAIN), PS = prog(VS_SHADOW, FS_SHADOW), PK = prog(VS_FS, FS_SKY);
 const PD = prog(VS_FS, FS_DOWN), PU = prog(VS_FS, FS_UP), PC = prog(VS_FS, FS_COMP);
+const PA = prog(VS_FS, FS_SSAO), PB = prog(VS_FS, FS_BLUR), PR = prog(VS_FS, FS_RAYS);
+// SSAO sample kernel: points in a hemisphere, denser near the centre
+const KERN = new Float32Array(36);
+{ const r = mulberry(77); for (let i = 0; i < 12; i++) { let x, y, z; do { x = r() * 2 - 1; y = r() * 2 - 1; z = r(); } while (x * x + y * y + z * z > 1 || z < 0.15); const l = Math.hypot(x, y, z), k = 0.15 + 0.85 * ((i + 1) / 12) ** 2; KERN.set([x / l * k, y / l * k, z / l * k], i * 3); } }
 setBar(0.25); await tick();
 
 // ---- the city mesh -----------------------------------------------------------
@@ -130,14 +134,19 @@ function collide(p, r) {
 setBar(0.75); await tick();
 
 // ---- render targets ------------------------------------------------------------------
-const shTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, shTex);
-gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, Q.sh, Q.sh);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
-for (const p of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, p, gl.LINEAR);
-for (const p of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE);
-const shFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, shFB);
-gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shTex, 0);
+function shadowMap(size) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, size, size);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+  for (const p of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, p, gl.LINEAR);
+  for (const p of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE);
+  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, t, 0);
+  return { t, f, size };
+}
+const SHF = shadowMap(Q.sh), SHN = shadowMap(Q.shN), NEAR_R = 42; // whole town / sharp map around the viewer
+const SSAO = floatOK && Q.ssao;
 
 const FMT = floatOK ? gl.RGBA16F : gl.RGBA8, HDR_SCALE = floatOK ? 1 : 4;
 function colorTex(w, h) {
@@ -152,7 +161,7 @@ function colorTex(w, h) {
 let RT = null;
 const msaa = Math.min(Q.msaa, gl.getParameter(gl.MAX_SAMPLES));
 function targets(w, h) {
-  if (RT) { for (const x of [RT.scene, ...RT.mips]) { gl.deleteTexture(x.t); gl.deleteFramebuffer(x.f); } gl.deleteRenderbuffer(RT.cr); gl.deleteRenderbuffer(RT.dr); gl.deleteFramebuffer(RT.ms); }
+  if (RT) { for (const x of [RT.scene, RT.nrm, RT.ao, RT.aoB, RT.rays, ...RT.mips]) if (x) { gl.deleteTexture(x.t); gl.deleteFramebuffer(x.f); } for (const r of [RT.cr, RT.dr, RT.nr]) if (r) gl.deleteRenderbuffer(r); gl.deleteFramebuffer(RT.ms); }
   const scene = colorTex(w, h), ms = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, ms);
   const cr = gl.createRenderbuffer(), dr = gl.createRenderbuffer();
   gl.bindRenderbuffer(gl.RENDERBUFFER, cr);
@@ -161,9 +170,21 @@ function targets(w, h) {
   gl.bindRenderbuffer(gl.RENDERBUFFER, dr);
   if (msaa) gl.renderbufferStorageMultisample(gl.RENDERBUFFER, msaa, gl.DEPTH_COMPONENT24, w, h); else gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
   gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, dr);
+  // second target: view-space normal + depth, for ambient occlusion and the light shafts
+  let nr = null, nrm = null, ao = null, aoB = null;
+  if (floatOK) {
+    nr = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, nr);
+    if (msaa) gl.renderbufferStorageMultisample(gl.RENDERBUFFER, msaa, gl.RGBA16F, w, h); else gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA16F, w, h);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, nr);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    nrm = colorTex(w, h);
+    for (const p of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, p, gl.NEAREST);
+    ao = colorTex(w >> 1, h >> 1); aoB = colorTex(w >> 1, h >> 1);
+  }
+  const rays = colorTex(Math.max(1, w >> 2), Math.max(1, h >> 2));
   const mips = []; let mw = w, mh = h;
   for (let i = 0; i < 6; i++) { mw = Math.max(1, mw >> 1); mh = Math.max(1, mh >> 1); mips.push(colorTex(mw, mh)); }
-  RT = { scene, ms, cr, dr, mips, w, h };
+  RT = { scene, ms, cr, dr, nr, nrm, ao, aoB, rays, mips, w, h };
 }
 
 // ---- matrices -------------------------------------------------------------------
@@ -199,7 +220,7 @@ function inv(o, m) {
   const d = 1 / (a[0] * b[0] + a[1] * b[4] + a[2] * b[8] + a[3] * b[12]);
   for (let i = 0; i < 16; i++) o[i] = b[i] * d; return o;
 }
-const V_ = mat(), P_ = mat(), VP = mat(), IVP = mat(), LV = mat(), LP = mat(), LVP = mat();
+const V_ = mat(), P_ = mat(), VP = mat(), IVP = mat(), LV = mat(), LP = mat(), LVP = mat(), LP2 = mat(), LVP2 = mat();
 
 // ---- time of day ---------------------------------------------------------------------
 // hour 0..24. The sun rises in the east (+x), culminates in the south (+z).
@@ -343,6 +364,14 @@ function resize() {
   W = w; H = h;
 }
 
+function shadowPass(S, m) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.f); gl.viewport(0, 0, S.size, S.size);
+  gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+  gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1.5, 3);
+  gl.useProgram(PS.p); gl.uniformMatrix4fv(PS.u.uVP, false, m);
+  gl.bindVertexArray(CITY.va); gl.drawElements(gl.TRIANGLES, CITY.n, gl.UNSIGNED_INT, 0);
+  gl.disable(gl.POLYGON_OFFSET_FILL);
+}
 function renderShadow() {
   const s = sky.sun, c = [0, 0, 20];
   const eye = [c[0] + s[0] * 300, c[1] + s[1] * 300, c[2] + s[2] * 300];
@@ -350,13 +379,24 @@ function renderShadow() {
   lookDir(LV, eye, [-s[0], -s[1], -s[2]], up);
   ortho(LP, -150, 150, -150, 150, 50, 650);
   mul(LVP, LP, LV);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, shFB); gl.viewport(0, 0, Q.sh, Q.sh);
-  gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
-  gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1.5, 3);
-  gl.useProgram(PS.p); gl.uniformMatrix4fv(PS.u.uVP, false, LVP);
-  gl.bindVertexArray(CITY.va); gl.drawElements(gl.TRIANGLES, CITY.n, gl.UNSIGNED_INT, 0);
-  gl.disable(gl.POLYGON_OFFSET_FILL);
+  shadowPass(SHF, LVP);
 }
+// the sharp map follows the viewer, re-rendered when they have walked a few metres
+const nearAt = [1e9, 0, 1e9];
+function renderNearShadow(p) {
+  const x = LV[0] * p[0] + LV[4] * p[1] + LV[8] * p[2] + LV[12], y = LV[1] * p[0] + LV[5] * p[1] + LV[9] * p[2] + LV[13];
+  const tx = (2 * NEAR_R) / SHN.size, cx = Math.round(x / tx) * tx, cy = Math.round(y / tx) * tx;
+  ortho(LP2, cx - NEAR_R, cx + NEAR_R, cy - NEAR_R, cy + NEAR_R, 50, 650);
+  mul(LVP2, LP2, LV);
+  shadowPass(SHN, LVP2);
+  nearAt[0] = p[0]; nearAt[1] = p[1]; nearAt[2] = p[2];
+}
+function pass(p, target, texs) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.f : null); gl.viewport(0, 0, target ? target.w : W, target ? target.h : H);
+  texs.forEach(([name, t], i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(p.u[name], i); });
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+const SUNP = new Float32Array(4);
 
 function fs(p, tex, target, px) { gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.f : null); gl.viewport(0, 0, target ? target.w : W, target ? target.h : H); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(p.u.uT, 0); if (px && p.u.uPx) gl.uniform2f(p.u.uPx, px[0], px[1]); gl.drawArrays(gl.TRIANGLES, 0, 3); }
 
@@ -372,12 +412,14 @@ function loop(now) {
   adaptT += dt;
   if (adaptT > 1.5) { adaptT = 0; if (ftAvg > 22 && scale > 0.55) scale = Math.max(0.55, scale - 0.1); else if (ftAvg < 13 && scale < 1) scale = Math.min(1, scale + 0.1); }
   resize();
-  if (shadowDirty) { renderShadow(); shadowDirty = false; }
+  if (shadowDirty) { renderShadow(); }
 
   // camera matrices
   const cp = Math.cos(cam.pitch), f = [Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), -Math.cos(cam.yaw) * cp];
   const eye = [cam.p[0], cam.p[1] + (cam.fly ? 0 : Math.abs(Math.sin(cam.bob)) * 0.045), cam.p[2]];
   lookDir(V_, eye, f, [0, 1, 0]); persp(P_, 1.2, RT.w / RT.h, 0.3, 1400); mul(VP, P_, V_); inv(IVP, VP);
+  if (shadowDirty || Math.hypot(eye[0] + f[0] * 12 - nearAt[0], eye[1] - nearAt[1], eye[2] + f[2] * 12 - nearAt[2]) > 9) renderNearShadow([eye[0] + f[0] * 12, eye[1], eye[2] + f[2] * 12]);
+  shadowDirty = false;
 
   // nearest street lamps
   let nl = 0;
@@ -398,7 +440,7 @@ function loop(now) {
 
   // scene
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, RT.w, RT.h);
-  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 1]); if (RT.nr) gl.clearBufferfv(gl.COLOR, 1, [0, 0, 1, 6e4]); gl.clear(gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE);
   const expo = (1 + sky.night * 0.9) * (1 / HDR_SCALE);
   const d = new Date(), hh = (d.getHours() % 12) + d.getMinutes() / 60, mm = d.getMinutes() + d.getSeconds() / 60;
@@ -408,15 +450,20 @@ function loop(now) {
   gl.uniform1f(u.uTime, tAcc); gl.uniform1f(u.uNight, sky.night); gl.uniform1f(u.uFog, sky.fog); gl.uniform1f(u.uExpo, expo);
   gl.uniform2f(u.uClock, (hh / 12) * 6.2832, (mm / 60) * 6.2832);
   gl.uniformMatrix4fv(u.uShM, false, LVP); gl.uniform2f(u.uShT, 1 / Q.sh, 1 / Q.sh);
-  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shTex); gl.uniform1i(u.uSh, 0);
+  gl.uniformMatrix4fv(u.uShM2, false, LVP2); gl.uniform2f(u.uShT2, 1 / Q.shN, 1 / Q.shN);
+  gl.uniform2f(u.uShW, 300 / Q.sh, (2 * NEAR_R) / Q.shN); gl.uniformMatrix4fv(u.uV, false, V_);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, SHF.t); gl.uniform1i(u.uSh, 0);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, AO); gl.uniform1i(u.uAO, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, SHN.t); gl.uniform1i(u.uSh2, 2);
   gl.uniform4fv(u.uL, LBUF); gl.uniform1i(u.uNL, nl);
   gl.bindVertexArray(CITY.va); gl.drawElements(gl.TRIANGLES, CITY.n, gl.UNSIGNED_INT, 0);
   gl.bindVertexArray(BIRDS.va); gl.drawElements(gl.TRIANGLES, NB * 12, gl.UNSIGNED_INT, 0);
   gl.bindVertexArray(ANI.va); gl.drawElements(gl.TRIANGLES, ANI.n, gl.UNSIGNED_INT, 0);
   // soft shadows under the animals, multiplied onto the ground
   gl.enable(gl.BLEND); gl.blendFunc(gl.DST_COLOR, gl.ZERO); gl.depthMask(false);
+  if (RT.nr) gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.NONE]);
   gl.bindVertexArray(ABL.va); gl.drawElements(gl.TRIANGLES, ABL.n, gl.UNSIGNED_INT, 0);
+  if (RT.nr) gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
   gl.disable(gl.BLEND); gl.depthMask(true);
   gl.bindVertexArray(null);
   // sky behind everything
@@ -427,8 +474,31 @@ function loop(now) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   gl.disable(gl.DEPTH_TEST);
   // resolve MSAA
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, RT.ms); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, RT.scene.f);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, RT.ms); gl.readBuffer(gl.COLOR_ATTACHMENT0); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, RT.scene.f);
   gl.blitFramebuffer(0, 0, RT.w, RT.h, 0, 0, RT.w, RT.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+  if (RT.nr) {
+    gl.readBuffer(gl.COLOR_ATTACHMENT1); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, RT.nrm.f);
+    gl.blitFramebuffer(0, 0, RT.w, RT.h, 0, 0, RT.w, RT.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    if (SSAO) {
+      gl.useProgram(PA.p); gl.uniform2f(PA.u.uF, P_[0], P_[5]); gl.uniform3fv(PA.u.uK, KERN);
+      pass(PA, RT.ao, [['uN', RT.nrm.t]]);
+      gl.useProgram(PB.p); gl.uniform2f(PB.u.uPx, 1 / RT.ao.w, 1 / RT.ao.h);
+      pass(PB, RT.aoB, [['uT', RT.ao.t], ['uN', RT.nrm.t]]);
+    }
+  }
+  // light shafts from the sun, when it is low enough to be seen
+  let rayK = 0;
+  const sp = [eye[0] + sky.sun[0] * 1000, eye[1] + sky.sun[1] * 1000, eye[2] + sky.sun[2] * 1000];
+  for (let i = 0; i < 4; i++) SUNP[i] = VP[i] * sp[0] + VP[4 + i] * sp[1] + VP[8 + i] * sp[2] + VP[12 + i];
+  if (RT.nr && SUNP[3] > 0 && sky.night < 0.5 && sky.sun[1] > -0.02) {
+    const sx = (SUNP[0] / SUNP[3]) * 0.5 + 0.5, sy = (SUNP[1] / SUNP[3]) * 0.5 + 0.5;
+    if (sx > -0.6 && sx < 1.6 && sy > -0.6 && sy < 1.6) {
+      rayK = (0.18 + 0.4 * (1 - Math.min(1, sky.sun[1] * 2))) * Math.min(1, SUNP[3] / 1000 * 2);
+      gl.useProgram(PR.p); gl.uniform2f(PR.u.uSunUV, sx, sy); gl.uniform1f(PR.u.uAsp, RT.w / RT.h);
+      pass(PR, RT.rays, [['uN', RT.nrm.t]]);
+    }
+  }
   // bloom
   gl.useProgram(PD.p);
   let src = RT.scene;
@@ -438,9 +508,9 @@ function loop(now) {
   gl.disable(gl.BLEND);
   // composite to screen
   gl.useProgram(PC.p);
-  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, RT.mips[0].t); gl.uniform1i(PC.u.uB, 1);
   gl.uniform1f(PC.u.uBloom, 0.12); gl.uniform1f(PC.u.uTime, tAcc % 100); gl.uniform1f(PC.u.uScale, HDR_SCALE);
-  fs(PC, RT.scene.t, null);
+  gl.uniform1f(PC.u.uAOn, SSAO ? 1 : 0); gl.uniform3f(PC.u.uRayC, sky.sunC[0] * rayK, sky.sunC[1] * rayK * 0.85, sky.sunC[2] * rayK * 0.6);
+  pass(PC, null, [['uT', RT.scene.t], ['uB', RT.mips[0].t], ['uA', (RT.aoB || RT.scene).t], ['uR', RT.rays.t]]);
 
   // HUD
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('t').classList.remove('on'); }

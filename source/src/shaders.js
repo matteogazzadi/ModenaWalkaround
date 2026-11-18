@@ -23,11 +23,12 @@ const FS_MAIN = /*glsl*/`#version 300 es
 precision highp float; precision highp sampler2DShadow;
 in vec3 vP; in vec3 vN; in vec2 vT; in vec3 vC; flat in vec2 vM; flat in vec4 vQ;
 uniform vec3 uCam,uSun,uSunC,uSky,uHor,uGnd; uniform float uTime,uNight,uFog,uExpo; uniform vec2 uClock;
-uniform sampler2DShadow uSh; uniform mat4 uShM; uniform vec2 uShT; uniform sampler2D uAO;
+uniform sampler2DShadow uSh,uSh2; uniform mat4 uShM,uShM2,uV; uniform vec2 uShT,uShT2,uShW; uniform sampler2D uAO;
 uniform vec4 uL[24]; uniform int uNL;
-out vec4 oC;
+layout(location=0) out vec4 oC; layout(location=1) out vec4 oN;
 ${GLSL_COMMON}
 const vec3 LAMPC=vec3(1.,.66,.36);
+const vec2 PD[12]=vec2[](vec2(-.326,-.406),vec2(-.84,-.074),vec2(-.696,.457),vec2(-.203,.621),vec2(.962,-.195),vec2(.473,-.48),vec2(.519,.767),vec2(.185,-.893),vec2(.507,.064),vec2(.896,.412),vec2(-.322,-.933),vec2(-.792,-.598));
 // coverage of a box given signed distances (negative = inside)
 float inBox(vec2 d,float fw){return 1.-smoothstep(-fw,fw,max(d.x,d.y));}
 
@@ -35,6 +36,56 @@ vec3 brick(vec2 t){
   float r=floor(t.y/.075);vec2 f=vec2(fract(t.x/.26+r*.5),fract(t.y/.075));
   float m=step(.06,f.x)*step(.12,f.y);float id=h2(vec2(floor(t.x/.26+r*.5),r));
   return mix(vec3(.5,.45,.4),mix(vec3(.55,.25,.15),vec3(.66,.36,.22),id),m);
+}
+
+// view ray and sun direction in the tangent space of the current wall (x along it, y up, z out),
+// and the extra shadowing a window recess casts on itself
+vec3 gRd,gLt;float gSh=1.;
+
+// A room seen through a window: the ray enters at o (x centred, y from the floor, z = 0 on the glass)
+// and hits the back wall, a side wall, the floor or the ceiling. Returns its colour.
+vec3 room(vec3 o,vec3 rd,vec2 sz,float dep,float seed,bool shop){
+  float tx=((rd.x>=0.?sz.x*.5:-sz.x*.5)-o.x)/(abs(rd.x)<1e-4?1e-4:rd.x);
+  float ty=((rd.y>=0.?sz.y:0.)-o.y)/(abs(rd.y)<1e-4?(rd.y<0.?-1e-4:1e-4):rd.y);
+  float tz=dep/max(-rd.z,1e-3),t=min(tx,min(ty,tz));
+  vec3 p=o+rd*t;
+  vec3 wc=mix(vec3(.62,.56,.46),vec3(.5,.55,.52),h1(seed));wc=mix(wc,vec3(.62,.45,.38),step(.75,h1(seed+.7)));
+  vec3 c;
+  if(t==tz){
+    c=wc;
+    if(shop){ // shelves full of goods
+      float sh=fract(p.y/.42),row=floor(p.y/.42);
+      vec3 item=.25+.75*vec3(h1(floor(p.x/.18)+row*7.+seed),h1(floor(p.x/.18)*3.+row+seed),h1(floor(p.x/.18)+row*13.+seed*2.));
+      c=mix(c,item*.7,step(.25,sh)*step(.4,p.y)*step(p.y,2.4));
+      c=mix(c,vec3(.35,.25,.16),step(sh,.12)*step(.4,p.y)*step(p.y,2.5));
+    }else{
+      float px=(h1(seed+2.)-.5)*sz.x*.5;
+      c=mix(c,mix(vec3(.25,.3,.35),vec3(.5,.35,.2),h1(seed+3.)),step(abs(p.x-px),.32)*step(abs(p.y-1.65),.24)); // a painting
+      c=mix(c,vec3(.28,.18,.11),step(p.y,.85)*step(abs(p.x+(h1(seed+4.)-.5)),.55)); // a cupboard
+    }
+  }else if(t==ty)c=rd.y>0.?vec3(.82,.8,.74):(shop?vec3(.55,.5,.45):vec3(.38,.24,.14)*(.8+.2*step(.5,fract(p.x*3.))));
+  else c=wc*.82;
+  return c*(1.-min(-p.z/dep,1.)*.5);
+}
+// does the sun reach point h (h.z <= 0) inside a recess of half size hs?
+float recessSun(vec3 h,vec2 hs){
+  if(gLt.z<=.01)return 0.;
+  vec2 e=h.xy+gLt.xy*(-h.z/gLt.z),dd=abs(e)-hs;
+  return 1.-smoothstep(-.015,.015,max(dd.x,dd.y));
+}
+// trace the view ray into a recess of half size hs, depth D from point q on the wall.
+// returns the hit point; face: 0 back, 1 side (x), 2 top/bottom (y)
+vec3 recess(vec2 q,vec2 hs,float D,out int face){
+  vec3 rd=gRd;
+  float tz=D/max(-rd.z,.02);
+  float tx=((rd.x>=0.?hs.x:-hs.x)-q.x)/(abs(rd.x)<1e-4?1e-4:rd.x);
+  float ty=((rd.y>=0.?hs.y:-hs.y)-q.y)/(abs(rd.y)<1e-4?1e-4:rd.y);
+  float t=min(tz,min(tx,ty));face=t==tz?0:t==tx?1:2;
+  return vec3(q,0.)+rd*t;
+}
+float revealLight(int face,vec3 h,vec2 hs){
+  vec3 nr=face==1?vec3(-sign(gRd.x),0,0):vec3(0,-sign(gRd.y),0);
+  return recessSun(h,hs)*clamp(dot(nr,gLt)/max(gLt.z,.08),0.,2.5);
 }
 
 // Window grid on plastered facades. Returns albedo, writes height, specular and glow.
@@ -57,28 +108,58 @@ vec3 windows(vec2 t,vec3 wall,float fw,inout float hgt,inout float spec,inout ve
   hgt+=max(fr,sl)*.35;
   vec3 shc=mix(vec3(.16,.27,.17),vec3(.3,.2,.12),step(.62,fract(sd*.37)));
   shc=mix(shc,vec3(.36,.38,.32),step(.88,fract(sd*.37)));
-  float slat=mix(.55+.45*smoothstep(.2,.8,fract(f.y/.055)),.78,smoothstep(.008,.025,fw));
   bool lit=r2<.3;
-  if(r<.42){ // closed shutters
-    vec3 s=lin(shc)*slat*(.9+.2*h2(cell+3.));
-    s=mix(s,s*.5,inBox(vec2(abs(f.x)-.015,abs(f.y-cy)-wh*.5),fw));
-    c=mix(c,s,win);hgt=mix(hgt,-.2+slat*.15,win);
-    if(lit)emi+=win*LAMPC*.06*(1.-slat)*uNight;
-  }else{
+  bool closed=r<.42;
+  if(!closed){
     // open: shutter leaves folded against the wall either side
+    float slat=mix(.55+.45*smoothstep(.2,.8,fract(f.y/.055)),.78,smoothstep(.008,.025,fw));
     vec2 dl=vec2(abs(abs(f.x)-ww*.75-.13)-ww*.25,abs(f.y-cy)-wh*.5);
     float lv=inBox(dl,fw)*step(r,.88);
     c=mix(c,lin(shc)*slat,lv);hgt+=lv*.25;
-    // glass and the dark room behind it
-    float frame=inBox(vec2(abs(f.x)-ww*.5,abs(f.y-cy)-wh*.5),fw)-inBox(vec2(abs(f.x)-ww*.5+.07,abs(f.y-cy)-wh*.5+.07),fw);
-    float mull=inBox(vec2(abs(f.x)-.03,abs(f.y-cy)-wh*.5),fw)+inBox(vec2(abs(f.x)-ww*.5,abs(f.y-cy-wh*.12)-.03),fw);
-    vec3 g=vec3(.03,.035,.04)+vec3(.05,.04,.03)*h2(cell+9.);
-    float curtain=step(.6,h2(cell+5.))*smoothstep(.05,.0,abs(f.x)-ww*.2)*.0;
-    c=mix(c,g,win);
-    c=mix(c,vec3(.75,.72,.65),clamp(frame+mull,0.,1.)*win);
-    spec=mix(spec,1.,win*(1.-clamp(frame+mull,0.,1.)));
-    hgt=mix(hgt,-.5,win);
-    if(lit)emi+=win*(1.-clamp(frame+mull,0.,1.))*LAMPC*(1.2+h2(cell+11.))*uNight*(1.-curtain);
+  }
+  if(win>.001){
+    // the opening is a real recess: trace into it
+    vec2 hs=vec2(ww*.5,wh*.5);int face;
+    vec3 h=recess(vec2(f.x,f.y-cy),hs,closed?.12:.2,face);
+    vec3 inner;float wsh=1.;
+    if(face==0){
+      wsh=recessSun(h,hs);
+      vec2 b=h.xy;
+      if(closed){
+        float slat=mix(.55+.45*smoothstep(.2,.8,fract(b.y/.055)),.78,smoothstep(.008,.025,fw));
+        inner=lin(shc)*slat*(.9+.2*h2(cell+3.));
+        inner*=1.-.5*inBox(vec2(abs(b.x)-.015,abs(b.y)-hs.y),fw);
+        if(lit)emi+=win*LAMPC*.05*(1.-slat)*uNight;
+      }else{
+        float frame=1.-inBox(vec2(abs(b.x)-hs.x+.06,abs(b.y)-hs.y+.06),fw);
+        float mull=clamp(inBox(vec2(abs(b.x)-.028,abs(b.y)-hs.y),fw)+inBox(vec2(abs(b.x)-hs.x,abs(b.y-wh*.12)-.028),fw)+frame,0.,1.);
+        inner=mix(vec3(.012,.013,.015),vec3(.78,.75,.68),mull);
+        // the room behind the glass
+        vec3 rc=room(vec3(b.x,b.y+cy,0.),gRd,vec2(cw,fh-.1),3.8,cell.x*7.3+cell.y*3.1+sd,false);
+        float curtain=step(.55,h2(cell+5.))*(.55+.25*sin(b.x*40.));
+        rc=mix(rc,vec3(.85,.82,.75),curtain*.6);
+        float day=dot(uSky,vec3(.3,.5,.2))*.55+max(uSun.y,0.)*.2;
+        float lamp=lit?uNight*(1.4+h2(cell+11.))*(1.-.4*clamp(abs(b.x)/hs.x,0.,1.)):0.;
+        emi+=win*(1.-mull)*rc*(day+lamp*LAMPC);
+        spec=mix(spec,1.,win*(1.-mull));
+      }
+    }else{
+      wsh=revealLight(face,h,hs);
+      inner=surr*.85;
+    }
+    c=mix(c,inner*.9,win);
+    gSh=mix(gSh,wsh,win);
+    hgt=mix(hgt,.3,win);
+  }
+  // geraniums in a box on some sills
+  if(h2(cell+17.3)<.22&&!closed){
+    vec2 q=vec2(f.x,f.y-sill);
+    float pot=inBox(vec2(abs(q.x)-ww*.5-.05,abs(q.y-.09)-.09),fw);
+    float leaf=smoothstep(.55,.4,vn(q*vec2(14.,18.)+cell*5.))*step(abs(q.x),ww*.5+.08)*step(.15,q.y)*step(q.y,.18+.2*vn(vec2(q.x*9.,cell.x)));
+    float fl=step(.72,vn(q*28.+cell*3.))*leaf;
+    vec3 fc=h2(cell+19.)<.5?vec3(.75,.06,.08):vec3(.85,.3,.5);
+    c=mix(c,lin(vec3(.55,.28,.18)),pot);c=mix(c,mix(vec3(.05,.14,.03),lin(fc),fl),leaf*(1.-pot));
+    hgt+=pot*.3+leaf*.4;
   }
   return c;
 }
@@ -92,23 +173,29 @@ vec3 shops(vec2 t,vec3 wall,float fw,inout float hgt,inout float spec,inout vec3
   vec2 d=vec2(abs(fx)-ow*.5,abs(t.y-oh*.5)-oh*.5);
   float o=inBox(d,fw),fr=inBox(d-.12,fw);
   vec3 c=mix(wall,wall*.8,fr);
-  vec3 g;
-  if(r<.18){ // roller shutter, closed
-    g=vec3(.32,.33,.34)*mix(.75+.25*smoothstep(.3,.7,fract(t.y/.09)),.87,smoothstep(.01,.03,fw));
-    hgt=mix(hgt,-.1,o);
-  }else if(r<.35){ // big wooden door
-    g=lin(vec3(.36,.22,.12))*(.8+.2*smoothstep(.0,.2,fract(fx/.22)));
-    g*=1.-.5*inBox(vec2(abs(fx)-.02,d.y),fw);
-    hgt=mix(hgt,-.2,o);
-  }else{ // shop window with a lit interior
-    float mull=inBox(vec2(abs(fx)-.04,d.y),fw)+inBox(vec2(d.x,abs(t.y-.45)-.45),fw);
-    vec3 inside=vec3(.06,.05,.04)+vec3(.12,.08,.05)*vn(vec2(fx*3.,t.y*2.)+r*40.);
-    g=mix(inside,lin(vec3(.2,.17,.14)),clamp(mull,0.,1.));
-    spec=mix(spec,1.,o*(1.-clamp(mull,0.,1.)));
-    float shelf=.55+.45*smoothstep(.1,.3,fract(t.y/.45))*step(.5,t.y);
-    emi+=o*(1.-clamp(mull,0.,1.))*LAMPC*(.035+.9*uNight)*(r2<.7?1.:0.12)*(.5+.8*vn(vec2(fx*2.,t.y*2.)+r*9.))*shelf;
-    hgt=mix(hgt,-.4,o);
+  if(o<.001)return c;
+  vec2 hs=vec2(ow*.5,oh*.5);int face;
+  vec3 h=recess(vec2(fx,t.y-oh*.5),hs,.28,face);
+  vec3 g;float wsh=1.;
+  if(face!=0){g=wall*.75;wsh=revealLight(face,h,hs);}
+  else{
+    wsh=recessSun(h,hs);vec2 b=h.xy;float by=b.y+oh*.5;
+    if(r<.18){ // roller shutter, closed
+      g=vec3(.32,.33,.34)*mix(.75+.25*smoothstep(.3,.7,fract(by/.09)),.87,smoothstep(.01,.03,fw));
+    }else if(r<.35){ // big wooden door
+      g=lin(vec3(.36,.22,.12))*(.8+.2*smoothstep(.0,.2,fract(b.x/.22)));
+      g*=1.-.5*inBox(vec2(abs(b.x)-.02,abs(b.y)-hs.y),fw);
+    }else{ // shop window and the shop behind it
+      float mull=clamp(inBox(vec2(abs(b.x)-.04,abs(b.y)-hs.y),fw)+inBox(vec2(abs(b.x)-hs.x,abs(by-.45)-.45),fw)+1.-inBox(vec2(abs(b.x)-hs.x+.05,abs(b.y)-hs.y+.05),fw),0.,1.);
+      g=mix(vec3(.012,.012,.014),lin(vec3(.2,.17,.14)),mull);
+      vec3 rc=room(vec3(b.x,by,0.),gRd,vec2(ow+1.,oh+.4),5.,id*5.1+sd,true);
+      float open=r2<.7?1.:.12;
+      emi+=o*(1.-mull)*rc*LAMPC*(.45+1.1*uNight)*open*1.3;
+      spec=mix(spec,1.,o*(1.-mull));
+    }
   }
+  gSh=mix(gSh,wsh,o);
+  hgt=mix(hgt,.3,o);
   return mix(c,g,o);
 }
 
@@ -165,7 +252,7 @@ vec3 slabs(vec2 t,float fw,inout float hgt){
   float e=min(min(f.x,1.15-f.x),min(f.y,.7-f.y));
   float m=smoothstep(.005,.012+fw*1.5,e);
   float id=h2(vec2(cx,r));
-  vec3 c=mix(vec3(.62,.58,.53),vec3(.72,.67,.6),id);
+  vec3 c=mix(vec3(.66,.6,.52),vec3(.76,.69,.6),id);
   c=mix(c,vec3(.68,.57,.5),step(.88,id));
   // bands of darker stone every few metres
   float band=inBox(vec2(.0,abs(fract(t.x/9.)-.5)*9.-.3),fw);
@@ -181,6 +268,13 @@ void main(){
   if(mat==21){float d=length(vT);if(d>1.)discard;oC=vec4(vec3(mix(.4,1.,smoothstep(.1,1.,d))),1.);return;}
   vec2 t=vT;
   vec2 dt=fwidth(t);float fw=max(dt.x,dt.y);
+  vec3 Nn=normalize(vN);vec3 V=uCam-vP;float dist=length(V);V/=dist;
+  if(dot(Nn,V)<0.)Nn=-Nn;
+  // tangent frame of the surface (x = direction of increasing u) for the window recesses
+  vec3 dpx=dFdx(vP),dpy=dFdy(vP);vec2 dtx=dFdx(t),dty=dFdy(t);
+  vec3 Tg=(dpx*dty.y-dpy*dtx.y)*sign(dtx.x*dty.y-dtx.y*dty.x);
+  Tg=normalize(Tg-Nn*dot(Tg,Nn)+1e-6);vec3 Bg=cross(Nn,Tg);if(Bg.y<0.)Bg=-Bg;
+  gRd=vec3(dot(-V,Tg),dot(-V,Bg),dot(-V,Nn));gLt=vec3(dot(uSun,Tg),dot(uSun,Bg),dot(uSun,Nn));
   vec3 a=lin(vC),emi=vec3(0);float hgt=0.,spec=.0,rough=.4,bump=.6;
   vec3 wall=a;
   if(mat==0||mat==1||mat==2){
@@ -206,7 +300,7 @@ void main(){
     hgt=seam;spec=.25;bump=.8;
   }
   else if(mat==8){a=lin(setts(t,fw,hgt,.12));bump=1.;}
-  else if(mat==9){a=lin(slabs(t,fw,hgt));bump=.6;spec=.015;}
+  else if(mat==9){a=lin(slabs(t,fw,hgt));bump=.6;spec=.07+.08*smoothstep(.5,.8,fbm(t*.15));}
   else if(mat==10){a=vec3(.012,.011,.01);}
   else if(mat==11){float pl=smoothstep(.0,.08,fract(t.x/.16))*.3+.7;a=lin(vC)*pl*(.8+.3*vn(vec2(t.x*20.,t.y*.6)));hgt=pl;}
   else if(mat==12){ // rose window
@@ -235,7 +329,7 @@ void main(){
   else if(mat==15){a=lin(vC);emi+=LAMPC*(.15+uNight*7.);}
   else if(mat==16){
     vec2 q=vec2(t.x+t.y,t.x-t.y)/.56;vec2 cq=floor(q);float ch=mod(cq.x+cq.y,2.);
-    a=mix(lin(vec3(.74,.48,.4)),lin(vec3(.82,.78,.7)),ch)*(.85+.25*vn(t*3.));
+    a=mix(lin(vec3(.72,.54,.47)),lin(vec3(.84,.79,.71)),ch)*(.85+.25*vn(t*3.));
     vec2 fq=fract(q);float e=min(min(fq.x,1.-fq.x),min(fq.y,1.-fq.y));hgt=smoothstep(.0,.04+fw,e);spec=.5;bump=.3;
   }
   else if(mat==17){a=vec3(.08,.08,.09);}
@@ -253,22 +347,31 @@ void main(){
     a*=1.-.35*base-streak*(mat==3?.6:.4);
   }
 
-  vec3 Nn=normalize(vN);vec3 V=uCam-vP;float dist=length(V);V/=dist;
-  if(dot(Nn,V)<0.)Nn=-Nn;
   // bump mapping from the screen-space slope of the height field
   float hw=hgt*.018*bump*(1.-smoothstep(.015,.06,fw));
-  vec3 dpx=dFdx(vP),dpy=dFdy(vP);float hx=dFdx(hw),hy=dFdy(hw);
+  float hx=dFdx(hw),hy=dFdy(hw);
   vec3 r1=cross(dpy,Nn),r2=cross(Nn,dpx);float det=dot(dpx,r1);
   vec3 N=abs(det)*Nn-sign(det)*(hx*r1+hy*r2);
   N=dot(N,N)>1e-20?normalize(N):Nn;
   if(dot(N,Nn)<.2)N=Nn;
 
-  // sun shadow (3x3 hardware PCF)
-  vec4 sp=uShM*vec4(vP+Nn*(uShT.x*450.+dist*.0006)+uSun*uShT.x*300.,1.);sp.xyz=sp.xyz*.5+.5;
-  float sh=0.;
-  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)sh+=texture(uSh,vec3(sp.xy+vec2(x,y)*uShT,sp.z-.00004));
-  sh/=9.;
-  if(any(greaterThan(abs(sp.xy-.5),vec2(.5))))sh=1.;
+  // sun shadow: a sharp map around the viewer, a coarse one for the whole town
+  vec4 sn=uShM2*vec4(vP+Nn*uShW.y*1.6+uSun*uShW.y,1.);sn.xyz=sn.xyz*.5+.5;
+  vec2 en=abs(sn.xy-.5);float fade=smoothstep(.4,.47,max(en.x,en.y));
+  float shN=1.,shF=1.;
+  if(fade<1.){
+    shN=0.;
+    for(int i=0;i<12;i++)shN+=texture(uSh2,vec3(sn.xy+PD[i]*uShT2*2.2,sn.z-.00002));
+    shN/=12.;
+  }
+  if(fade>0.){
+    vec4 sp=uShM*vec4(vP+Nn*(uShW.x*1.5+dist*.0006)+uSun*uShW.x,1.);sp.xyz=sp.xyz*.5+.5;
+    shF=0.;
+    for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)shF+=texture(uSh,vec3(sp.xy+vec2(x,y)*uShT,sp.z-.00004));
+    shF/=9.;
+    if(any(greaterThan(abs(sp.xy-.5),vec2(.5))))shF=1.;
+  }
+  float sh=mix(shN,shF,fade)*gSh;
   // ambient occlusion from the blurred building footprints
   vec4 ao4=texture(uAO,(vP.xz+170.)/340.);
   float ao=vM.y*(1.-.6*ao4.r*(1.-smoothstep(.0,3.,vP.y)));
@@ -302,6 +405,7 @@ void main(){
   vec3 fc=uHor+uSunC*.18*pow(max(dot(vd,uSun),0.),6.)*(1.-uNight);
   col=mix(col,fc,f);
   oC=vec4(col*uExpo,1.);
+  oN=vec4(normalize(mat3(uV)*N),-(uV*vec4(vP,1.)).z);
 }`;
 
 const VS_SHADOW = /*glsl*/`#version 300 es
@@ -316,7 +420,7 @@ out vec2 vU; void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);vU=p;gl_P
 const FS_SKY = /*glsl*/`#version 300 es
 precision highp float;
 in vec2 vU; uniform mat4 uIVP; uniform vec3 uSun,uSunC,uSky,uHor,uGnd,uMoon; uniform float uTime,uNight,uExpo;
-out vec4 oC;
+layout(location=0) out vec4 oC; layout(location=1) out vec4 oN;
 ${GLSL_COMMON}
 void main(){
   vec4 w=uIVP*vec4(vU*2.-1.,1.,1.);vec3 d=normalize(w.xyz/w.w);
@@ -343,7 +447,7 @@ void main(){
     c+=uNight*vec3(.05,.07,.12)*pow(max(mm,0.),30.);
   }
   if(d.y<0.)c=mix(uHor,uGnd*.6,smoothstep(.0,-.25,d.y));
-  oC=vec4(c*uExpo,1.);
+  oC=vec4(c*uExpo,1.);oN=vec4(0,0,1,6e4);
 }`;
 
 // bloom: bright-pass + downsample, then upsample with a tent filter
@@ -354,15 +458,51 @@ c*=.25;if(uThr>0.){float l=max(max(c.r,c.g),c.b);c*=max(l-uThr,0.)/max(l,1e-4);}
 const FS_UP = /*glsl*/`#version 300 es
 precision highp float; in vec2 vU; uniform sampler2D uT; uniform vec2 uPx; out vec4 o;
 void main(){vec3 c=vec3(0);for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)c+=texture(uT,vU+uPx*vec2(x,y)).rgb*(x==0?2.:1.)*(y==0?2.:1.);o=vec4(c/16.,1);}`;
+// screen-space ambient occlusion from the view-space normals and depth
+const FS_SSAO = /*glsl*/`#version 300 es
+precision highp float; in vec2 vU; uniform sampler2D uN; uniform vec2 uF; uniform vec3 uK[12]; out vec4 o;
+void main(){
+  vec4 nd=texture(uN,vU);float d=nd.w;if(d>4e4){o=vec4(1);return;}
+  vec3 p=vec3((vU*2.-1.)/uF*d,-d),n=normalize(nd.xyz);
+  float an=6.2832*fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))));
+  vec3 rv=vec3(cos(an),sin(an),0.),tg=normalize(rv-n*dot(rv,n)),bt=cross(n,tg);
+  float R=.8+d*.012,occ=0.;
+  for(int i=0;i<12;i++){
+    vec3 s=p+(tg*uK[i].x+bt*uK[i].y+n*uK[i].z)*R;
+    vec2 su=(s.xy/-s.z)*uF*.5+.5;float sd=texture(uN,su).w;
+    occ+=step(sd,-s.z-.02-d*.002)*smoothstep(0.,1.,R/abs(d-sd));
+  }
+  o=vec4(1.-occ/12.);
+}`;
+const FS_BLUR = /*glsl*/`#version 300 es
+precision highp float; in vec2 vU; uniform sampler2D uT,uN; uniform vec2 uPx; out vec4 o;
+void main(){float d0=texture(uN,vU).w,s=0.,w=0.;
+  for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++){vec2 u=vU+vec2(x,y)*uPx;float dd=texture(uN,u).w;float k=1./(1.+abs(dd-d0)*8./max(d0,1.)*20.);s+=texture(uT,u).r*k;w+=k;}
+  o=vec4(s/w);}`;
+// light shafts: march from each pixel towards the sun through the sky mask
+const FS_RAYS = /*glsl*/`#version 300 es
+precision highp float; in vec2 vU; uniform sampler2D uN; uniform vec2 uSunUV; uniform float uAsp; out vec4 o;
+void main(){
+  vec2 dl=(uSunUV-vU)/36.;vec2 uv=vU+dl*fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453);
+  float acc=0.,w=1.;
+  for(int i=0;i<36;i++){uv+=dl;vec2 c=clamp(uv,0.,1.);acc+=step(4e4,texture(uN,c).w)*w;w*=.965;}
+  float fall=exp(-length((vU-uSunUV)*vec2(uAsp,1.))*1.8);
+  o=vec4(acc/36.*fall);
+}`;
 const FS_COMP = /*glsl*/`#version 300 es
-precision highp float; in vec2 vU; uniform sampler2D uT,uB; uniform float uBloom,uTime,uScale; out vec4 o;
+precision highp float; in vec2 vU; uniform sampler2D uT,uB,uA,uR; uniform float uBloom,uTime,uScale,uAOn; uniform vec3 uRayC; out vec4 o;
 vec3 aces(vec3 x){return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.);}
 void main(){
-  vec3 c=texture(uT,vU).rgb*uScale+texture(uB,vU).rgb*uScale*uBloom;
+  float ao=mix(1.,texture(uA,vU).r,uAOn);
+  vec3 c=texture(uT,vU).rgb*uScale*mix(.22,1.,ao)+texture(uB,vU).rgb*uScale*uBloom;
+  c+=uRayC*texture(uR,vU).r;
   c=aces(c*1.05);
-  // warm lift in the shadows, slightly cool highlights: a gentle filmic grade
   c=pow(c,vec3(1./2.2));
-  c=mix(c,c*vec3(1.03,1.,.95),.6);
+  // grade: a touch more saturation and contrast, warm highlights, cooler shadows
+  float l=dot(c,vec3(.2126,.7152,.0722));
+  c=mix(vec3(l),c,1.12);
+  c=mix(c*vec3(.96,.99,1.05),c*vec3(1.04,1.,.94),smoothstep(.2,.8,l));
+  c=mix(c,smoothstep(0.,1.,c),.25);
   vec2 q=vU-.5;c*=1.-.35*dot(q,q)*1.6;
   c+=(fract(sin(dot(gl_FragCoord.xy+uTime,vec2(12.9898,78.233)))*43758.5453)-.5)/255.;
   o=vec4(c,1);

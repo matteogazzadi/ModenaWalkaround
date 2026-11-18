@@ -135,7 +135,7 @@ const Animals = (() => {
   ];
   const PATHS = [
     [[-25, 20], [30, 20], [32, 46], [-26, 46]], [[40, -26], [68, -28], [68, 12], [42, 12]], [[-100, 80], [100, 80]],
-    [[-52, -80], [-52, 60]], [[-40, -29.5], [60, -29.5]], [[-46, -15], [-38, -15], [-38, 15], [-46, 15]],
+    [[-52, -80], [-52, 60]], [[-40, -29.5], [60, -29.5]], [[-44.5, -15], [-38, -15], [-38, 15], [-44.5, 15]],
   ];
   const dogs = PATHS.map((path, i) => {
     let L = 0; const seg = [];
@@ -187,7 +187,7 @@ const Animals = (() => {
   ];
   const CAT_SPOTS = [
     { x: 42, z: 35, yaw: -1.6, mode: 'sit' }, { x: -37.5, z: 7, yaw: -1.4, mode: 'sleep' }, { x: 13, z: 13.4, yaw: 3.1, mode: 'sit' },
-    { x: -20, z: 72.3, yaw: 1.6, mode: 'patrol', bx: -6, bz: 72.3 }, { x: 46, z: -12, yaw: 2.5, mode: 'sleep' },
+    { x: -20, z: 72.3, yaw: 1.6, mode: 'patrol', bx: -6, bz: 72.3 }, { x: 50, z: -10, yaw: 2.5, mode: 'sleep' },
     { x: -10, z: -13.6, yaw: 0, mode: 'patrol', bx: 8, bz: -13.6 }, { x: 52, z: 65, yaw: 0.4, mode: 'sit' },
   ];
   const cats = CAT_SPOTS.map((sp, i) => {
@@ -318,7 +318,63 @@ const Animals = (() => {
   for (let i = 0; i < BM.nv; i++) { BM.v[i * STRIDE + 4] = 1; }
   for (let i = 0; i < AM.nv; i++) { AM.v[i * STRIDE + 12] = 1; }
 
+  // ---- people strolling through the centre, and a few standing chatting
+  const PERSON = [
+    [-1, [0, .95, 0], [0, 0, 0], [.16, .1, .1], 'p'],              // 0 hips
+    [0, [0, .07, 0], [0, .3, 0], [.18, .3, .11], 's'],              // 1 torso
+    [1, [0, .62, 0], [0, .13, .01], [.095, .12, .105], 'k'],        // 2 head
+    [2, [0, 0, 0], [0, .22, -.01], [.1, .035, .11], 'h'],          // 3 hair
+    [1, [-.235, .56, 0], [0, -.29, 0], [.05, .29, .06], 's'],       // 4 arms
+    [1, [.235, .56, 0], [0, -.29, 0], [.05, .29, .06], 's'],
+    [0, [-.085, -.04, 0], [0, -.45, 0], [.07, .45, .08], 'p'],      // 6 legs
+    [0, [.085, -.04, 0], [0, -.45, 0], [.07, .45, .08], 'p'],
+    [6, [0, -.9, 0], [0, -.02, .04], [.065, .035, .12], 'f'],       // 8 shoes
+    [7, [0, -.9, 0], [0, -.02, .04], [.065, .035, .12], 'f'],
+  ];
+  const SHIRT = [[0.75, 0.2, 0.18], [0.15, 0.25, 0.45], [0.9, 0.88, 0.82], [0.3, 0.45, 0.3], [0.85, 0.65, 0.2], [0.35, 0.3, 0.32], [0.55, 0.15, 0.3], [0.2, 0.55, 0.65], [0.95, 0.75, 0.6], [0.12, 0.12, 0.14]];
+  const PANTS = [[0.15, 0.18, 0.3], [0.2, 0.2, 0.22], [0.45, 0.38, 0.28], [0.1, 0.1, 0.12], [0.6, 0.55, 0.45], [0.3, 0.25, 0.35]];
+  const SKIN = [[0.93, 0.76, 0.62], [0.82, 0.62, 0.48], [0.6, 0.42, 0.3], [0.95, 0.8, 0.7], [0.45, 0.3, 0.22]];
+  const HAIR = [[0.1, 0.07, 0.05], [0.35, 0.22, 0.12], [0.75, 0.6, 0.35], [0.55, 0.55, 0.55], [0.2, 0.12, 0.08]];
+  const WALKS = [
+    [[-28, 22], [33, 22], [33, 45], [-28, 45]], [[-28, 45], [33, 45], [33, 22], [-28, 22]], [[-120, 77], [120, 77]], [[120, 83], [-120, 83]],
+    [[-52, -90], [-52, 70]], [[-50, 70], [-50, -90]], [[-44, -31], [62, -31]], [[45, -24], [56, -24], [56, 15], [45, 15]],
+    [[30, 55], [30, 90]], [[-44, -17], [-36, -17], [-36, 17], [-44, 17]], [[36, 66], [70, 70]], [[-8, 17.5], [24, 17.5]],
+    [[70, 80], [-60, 80]], [[0, 26], [20, 44], [-10, 40]],
+  ];
+  const mkPerson = (extra) => make(PERSON, { s: pick(SHIRT), p: pick(PANTS), k: pick(SKIN), h: pick(HAIR), f: [0.12, 0.1, 0.09] }, 0.92 + rnd() * 0.16, extra);
+  const people = WALKS.map((path) => {
+    let L = 0; const seg = [];
+    for (let k = 0; k < path.length; k++) { const a = path[k], b = path[(k + 1) % path.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]); seg.push(l); L += l; }
+    return mkPerson({ path, seg, L, s: rnd() * L, sp: 1.1 + rnd() * 0.4, ph: rnd() * 6, walk: true, timer: 10 + rnd() * 20 });
+  });
+  for (const [x, z, yaw] of [[2, 34, 0.4], [2.7, 34.6, 3.5], [24, 28, 2], [23.3, 28.6, -1.2], [-40, 3, 1.5], [55, -5, 0.8], [55.7, -4.4, -2.3], [-20, 77.2, 1.6]]) {
+    people.push(mkPerson({ x, z, yaw, walk: false, ph: rnd() * 6 }));
+  }
+  function updatePerson(q, dt, t) {
+    const P = q.parts;
+    if (q.walk) {
+      q.timer -= dt;
+      if (q.timer < 0) { q.stop = q.stop ? 0 : 1; q.timer = q.stop ? 2 + rnd() * 4 : 15 + rnd() * 25; }
+      const moving = !q.stop;
+      if (moving) { q.s += q.sp * dt; q.ph += dt * q.sp * 5.2 / q.scale; }
+      pathAt(q, q.s, PA); q.x = PA[0]; q.z = PA[1];
+      q.yaw += angTo(q.yaw, PA[2]) * Math.min(1, dt * 5);
+      const sw = moving ? Math.sin(q.ph) : 0;
+      P[6].rx = sw * 0.45; P[7].rx = -sw * 0.45; P[4].rx = -sw * 0.35; P[5].rx = sw * 0.35;
+      P[8].rx = Math.max(0, -sw) * 0.3; P[9].rx = Math.max(0, sw) * 0.3;
+      q.y = groundY(q.x, q.z) + (moving ? Math.abs(Math.cos(q.ph)) * 0.03 - 0.03 : 0);
+      P[2].ry = q.stop ? Math.sin(t * 0.8 + q.ph) * 0.6 : 0;
+    } else { // chatting: shifting weight, gesturing
+      q.y = groundY(q.x, q.z);
+      P[1].rz = Math.sin(t * 0.7 + q.ph) * 0.03; P[2].rx = Math.sin(t * 1.3 + q.ph) * 0.08;
+      P[4].rx = -0.3 - Math.max(0, Math.sin(t * 2.1 + q.ph)) * 0.6; P[4].rz = -0.1; P[5].rz = 0.08;
+    }
+    pose(q);
+    writeBlob(q.blob, q.x, groundY(q.x, q.z) + 0.012, q.z, 0.3, q.yaw, 0.25);
+  }
+
   function update(dt, t, cam) {
+    for (const q of people) updatePerson(q, dt, t);
     for (const d of dogs) updateDog(d, dt, t, cam);
     for (const c of cats) updateCat(c, dt, t, cam);
     for (const b of birds) updateBird(b, dt, t, cam);
