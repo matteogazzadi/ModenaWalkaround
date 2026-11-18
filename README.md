@@ -25,6 +25,24 @@ Ispirato a [Abyssal Garden](https://github.com/Noniv/abyssal-garden).
 
 Funziona offline, non c'è niente da installare.
 
+## Versione fotorealistica: `modena-3d.html`
+
+Il vero centro di Modena in 3D: Duomo, Ghirlandina, Piazza Grande e tutte le vie sono la scansione fotografica
+(fotogrammetria) dei [3D Tiles fotorealistici di Google](https://developers.google.com/maps/documentation/tile/3d-tiles),
+mostrata con [CesiumJS](https://cesium.com/platform/cesiumjs/). Ci cammini dentro in prima persona: i piedi seguono il
+selciato vero e i muri ti fermano.
+
+1. Scarica [`modena-3d.html`](modena-3d.html) e aprilo con doppio clic (serve internet).
+2. Incolla una chiave (gratis):
+   - **Cesium ion**, la strada più semplice: registrati su [ion.cesium.com](https://ion.cesium.com/signup),
+     apri *Access Tokens* e copia il token *Default* (inizia con `eyJ`);
+   - oppure una **chiave Google** con la *Map Tiles API* attiva (inizia con `AIza`; serve un account di fatturazione Google Cloud,
+     con una quota gratuita mensile).
+3. Premi **Entra in piazza**. I tasti sono gli stessi della versione disegnata (`1`–`6` per i luoghi, `F` per volare).
+
+La chiave resta salvata solo nel tuo browser. Da vicino, a livello strada, la scansione è un po' meno nitida che vista dall'alto:
+è il limite dei dati di Google, non del programma.
+
 ## Comandi
 
 | | Tastiera e mouse |

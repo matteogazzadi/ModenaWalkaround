@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang=it>
+<head>
+<meta charset=utf-8>
+<title>Modena 3D</title>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=theme-color content=#1c120c>
+<link rel=stylesheet href="https://cdn.jsdelivr.net/npm/cesium@1.135.0/Build/Cesium/Widgets/widgets.css">
+<style>
+html { background: #1c120c; }
+body {
+  position: fixed; inset: 0; margin: 0; overflow: hidden; background: #1c120c;
+  font: 600 clamp(13px, .6vw + .8vh, 26px)/1.4 Georgia, 'Times New Roman', serif; color: #fbf1e3;
+}
+#cz { position: absolute; inset: 0; transition: filter 1s; }
+#cz canvas { cursor: crosshair; touch-action: none; }
+body:not(.g) #cz { filter: blur(.5vmax) brightness(.55); }
+.cesium-viewer-bottom { z-index: 5; }
+#m {
+  position: absolute; inset: 0; z-index: 10; display: grid; place-content: center; justify-items: center; gap: min(1.4em, 4vmin);
+  padding: 1em; text-align: center; background: radial-gradient(#1c120c00 30%, #1c120cd0); overflow-y: auto; transition: opacity .5s, visibility .5s;
+}
+.g #m { opacity: 0; visibility: hidden; }
+h1 { margin: 0; font: italic 700 4.6em/0.95 Georgia, serif; color: #0000; background: linear-gradient(#fff6e6 30%, #f2c27f 70%, #c9763f); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 .05em .2em #000c); }
+.sub { margin: -.5em 0 0; font: 700 .8em system-ui, sans-serif; letter-spacing: .3em; text-transform: uppercase; color: #f2c27f; }
+.box { width: 32em; max-width: 100%; box-sizing: border-box; padding: .9em 1.3em; border-radius: .7em; background: #1c120cc4; font: 500 .8em/1.5 system-ui, sans-serif; text-align: left; }
+label { display: block; margin-bottom: .4em; color: #f2c27f; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+#key { width: 100%; box-sizing: border-box; padding: .6em .8em; border: 2px solid #f2c27f80; border-radius: .4em; background: #0b0705; color: #fbf1e3; font: 500 1em ui-monospace, monospace; }
+#key:focus { outline: none; border-color: #f2c27f; }
+details { margin-top: .6em; } summary { cursor: pointer; color: #ffe0a8; }
+details ol { margin: .4em 0 .6em; padding-left: 1.3em; } details p { margin: .6em 0 .2em; font-weight: 700; color: #f2c27f; }
+a { color: #ffe0a8; }
+#s { min-height: 1.2em; margin: .5em 0 0; color: #ffe0a8; } #s.err { color: #ff9b7a; }
+button {
+  display: flex; align-items: center; justify-content: center; padding: .8em 1.4em; border: 0; border-radius: .5em; cursor: pointer;
+  background: #fbf1e3; color: #3a1f12; box-shadow: inset 0 -.2em #0003, 0 .3em 1em #0009;
+  font: 800 1em/1.2 system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase;
+}
+button:disabled { opacity: .6; cursor: wait; }
+#go { width: 22em; max-width: 100%; padding: .9em; font-size: 1.2em; background: linear-gradient(#ffe0a8, #e0904f); }
+#k { display: flex; gap: 1.6em; } #k div { display: grid; grid-template-columns: auto auto; gap: .35em .8em; align-content: start; }
+#k i { justify-self: end; font-style: normal; white-space: nowrap; } #k b { padding: .1em .4em; border-radius: .3em; background: #fbf1e3; color: #3a1f12; }
+#q { display: flex; align-items: center; gap: .4em; padding: .4em; } #q span { flex: 1; color: #f2c27f; text-transform: uppercase; letter-spacing: .12em; font-weight: 700; }
+#q button { flex: 1.2; padding: .55em 0; background: none; box-shadow: none; color: #fbf1e3; font-size: .95em; } #q .on { background: linear-gradient(#ffe0a8, #e0904f); color: #3a1f12; }
+@media (pointer: coarse), (max-height: 36em) { #k { display: none; } }
+#o { position: absolute; top: .6em; right: .6em; z-index: 6; display: none; padding: .3em .7em; font-size: 1.3em; background: #1c120cd9; color: #fbf1e3; box-shadow: inset 0 0 0 2px #f2c27f; }
+@media (pointer: coarse) { .g #o { display: block; } }
+#z { position: absolute; left: 1em; top: .8em; z-index: 6; font: italic 700 1.3em Georgia, serif; text-shadow: 0 .05em .4em #000c; opacity: 0; transition: opacity .6s; pointer-events: none; }
+.g #z { opacity: .95; }
+#t { position: absolute; left: 50%; top: 16%; z-index: 6; transform: translate(-50%, -.5em); padding: .5em 1.2em; border-radius: 2em; background: #1c120cb0; font: 700 .9em system-ui, sans-serif; letter-spacing: .1em; text-transform: uppercase; opacity: 0; transition: opacity .4s, transform .4s; pointer-events: none; }
+#t.on { opacity: 1; transform: translate(-50%, 0); }
+#ld { position: absolute; right: 1em; top: 1em; z-index: 6; padding: .35em .9em; border-radius: 2em; background: #1c120cb0; font: 600 .75em system-ui, sans-serif; opacity: 0; transition: opacity .5s; pointer-events: none; }
+#ld.on { opacity: .9; }
+#cmp { position: absolute; right: 1.2em; bottom: 3.2em; z-index: 6; width: 3em; height: 3em; border-radius: 50%; background: #1c120cb0; box-shadow: 0 0 0 2px #fbf1e3aa; display: none; place-items: center; font: 800 .8em system-ui; color: #ffe0a8; }
+.g #cmp { display: grid; }
+#cmp::before { content: "N"; transform: translateY(-.7em); }
+#cr { position: absolute; left: 50%; top: 50%; z-index: 6; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #fff9; display: none; pointer-events: none; }
+.g #cr { display: block; }
+</style>
+</head>
+<body class=m>
+<div id=cz></div>
+<div id=cr></div><div id=z></div><div id=t></div><div id=ld>Carico i dettagli…</div><div id=cmp></div>
+<button id=o aria-label=Menu>≡</button>
+<div id=m>
+  <h1>Modena</h1>
+  <p class=sub>Il centro vero, in 3D</p>
+  <div class=box>
+    <label for=key>La tua chiave</label>
+    <input id=key type=password autocomplete=off spellcheck=false placeholder="Token Cesium ion (eyJ…) oppure chiave Google (AIza…)">
+    <details>
+      <summary>Come ottengo la chiave? (gratis, 3 minuti)</summary>
+      <p>Strada semplice: Cesium ion, senza carta di credito</p>
+      <ol>
+        <li>Registrati gratis su <a href="https://ion.cesium.com/signup" target=_blank rel=noopener>ion.cesium.com</a>.</li>
+        <li>Apri la pagina <b>Access Tokens</b>.</li>
+        <li>Copia il token <b>Default</b> (inizia con <code>eyJ</code>) e incollalo qui sopra.</li>
+      </ol>
+      <p>In alternativa: una chiave Google</p>
+      <ol>
+        <li>Su <a href="https://console.cloud.google.com/" target=_blank rel=noopener>console.cloud.google.com</a> crea un progetto (serve un account di fatturazione; c'è una quota gratuita ogni mese).</li>
+        <li>Attiva la <b>Map Tiles API</b>.</li>
+        <li>In <b>Credenziali</b> crea una chiave API (inizia con <code>AIza</code>) e incollala qui.</li>
+      </ol>
+      La chiave resta solo in questo browser e viene inviata solo a Google o a Cesium per scaricare i modelli 3D.
+    </details>
+    <p id=s></p>
+  </div>
+  <button id=go>Entra in piazza</button>
+  <div id=k class=box>
+    <div><span>Guardati intorno</span><i>mouse</i><span>Cammina</span><i><b>W</b> <b>A</b> <b>S</b> <b>D</b></i><span>Corri</span><i><b>Shift</b></i><span>Volo libero</span><i><b>F</b></i></div>
+    <div><span>Su / giù in volo</span><i><b>E</b> <b>Q</b></i><span>Luoghi</span><i><b>1</b>–<b>6</b></i><span>Campane</span><i><b>B</b></i><span>Audio · Menu</span><i><b>M</b> <b>Esc</b></i></div>
+  </div>
+  <div id=q class=box><span>Dettaglio</span><button data-q=low>Basso</button><button data-q=medium>Medio</button><button data-q=high>Alto</button></div>
+</div>
+<script>window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.135.0/Build/Cesium/';</script>
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.135.0/Build/Cesium/Cesium.js"></script>
+<script>
+/*SCRIPT*/
+</script>
+</body>
+</html>

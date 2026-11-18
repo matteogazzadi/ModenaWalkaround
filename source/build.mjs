@@ -35,3 +35,12 @@ else {
 }
 writeFileSync(path.join(here, '..', 'index.html'), html);
 console.log(`index.html: ${(html.length / 1024).toFixed(1)} kB${readable ? ' (readable)' : ''}, ${(gzipSync(Buffer.from(html), { level: 9 }).length / 1024).toFixed(1)} kB gzipped`);
+
+// the photorealistic version: ../modena-3d.html (CesiumJS + Google Photorealistic 3D Tiles)
+{
+  const tplR = readFileSync(path.join(here, 'reale', 'template.html'), 'utf8');
+  const jsR = ['../src/audio.js', 'main.js'].map((f) => readFileSync(path.join(here, 'reale', f), 'utf8')).join('\n');
+  const wrapR = (b) => `(async()=>{${b}\n})().catch(e=>{console.error(e);const s=document.getElementById('s');s.textContent='Impossibile avviare: '+e.message;s.className='err'});`;
+  writeFileSync(path.join(here, '..', 'modena-3d.html'), tplR.replace('/*SCRIPT*/', () => wrapR(jsR)));
+  console.log('modena-3d.html written');
+}
