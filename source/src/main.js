@@ -65,6 +65,7 @@ const SB = S_(M.BIRD, [0.3, 0.3, 0.32]);
 for (let i = 0; i < NB; i++) { G.tri([0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0, 0, 0, 0], SB); G.tri([0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0, 0, 0, 0], SB); }
 for (let i = 0; i < BM.nv; i++) { BM.v[i * STRIDE + 3] = 0; BM.v[i * STRIDE + 4] = 1; BM.v[i * STRIDE + 5] = 0; }
 const BIRDS = vao(BM, true);
+const ANI = vao(Animals.AM, true), ABL = vao(Animals.BM, true);
 const CENTRES = [[TX, TZ], [10, 30], [55, 0]];
 function updateBirds(t) {
   const v = BM.v;
@@ -252,6 +253,10 @@ addEventListener('blur', () => { for (const k in keys) keys[k] = 0; });
 addEventListener('mousemove', (e) => { if (document.pointerLockElement === canvas) { mdx += e.movementX; mdy += e.movementY; } });
 const capture = () => { audio.start(); const p = canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(() => 0); };
 canvas.addEventListener('click', () => { if (!menu && document.pointerLockElement !== canvas) capture(); });
+let dragging = false;
+canvas.addEventListener('mousedown', () => { dragging = true; });
+addEventListener('mouseup', () => { dragging = false; });
+addEventListener('mousemove', (e) => { if (dragging && !menu && document.pointerLockElement !== canvas) { mdx += e.movementX; mdy += e.movementY; } });
 
 // touch: left half walks (virtual stick), right half looks around
 const touchState = { mv: null, lk: null, mx: 0, mz: 0 };
@@ -387,6 +392,9 @@ function loop(now) {
     }
   }
   updateBirds(tAcc);
+  Animals.update(dt, tAcc, cam);
+  gl.bindBuffer(gl.ARRAY_BUFFER, ANI.vb); gl.bufferSubData(gl.ARRAY_BUFFER, 0, Animals.AM.v, 0, Animals.AM.nv * STRIDE);
+  gl.bindBuffer(gl.ARRAY_BUFFER, ABL.vb); gl.bufferSubData(gl.ARRAY_BUFFER, 0, Animals.BM.v, 0, Animals.BM.nv * STRIDE);
 
   // scene
   gl.bindFramebuffer(gl.FRAMEBUFFER, RT.ms); gl.viewport(0, 0, RT.w, RT.h);
@@ -405,6 +413,11 @@ function loop(now) {
   gl.uniform4fv(u.uL, LBUF); gl.uniform1i(u.uNL, nl);
   gl.bindVertexArray(CITY.va); gl.drawElements(gl.TRIANGLES, CITY.n, gl.UNSIGNED_INT, 0);
   gl.bindVertexArray(BIRDS.va); gl.drawElements(gl.TRIANGLES, NB * 12, gl.UNSIGNED_INT, 0);
+  gl.bindVertexArray(ANI.va); gl.drawElements(gl.TRIANGLES, ANI.n, gl.UNSIGNED_INT, 0);
+  // soft shadows under the animals, multiplied onto the ground
+  gl.enable(gl.BLEND); gl.blendFunc(gl.DST_COLOR, gl.ZERO); gl.depthMask(false);
+  gl.bindVertexArray(ABL.va); gl.drawElements(gl.TRIANGLES, ABL.n, gl.UNSIGNED_INT, 0);
+  gl.disable(gl.BLEND); gl.depthMask(true);
   gl.bindVertexArray(null);
   // sky behind everything
   gl.useProgram(PK.p);
@@ -463,4 +476,4 @@ addEventListener('keydown', (e) => { if (e.code === 'Escape' && !menu && !docume
 setBar(1);
 requestAnimationFrame(loop);
 setTimeout(() => ui(true), 300);
-window.__mw = { cam, goto, setHour: (h) => { hour = h; shadowDirty = true; syncHour(); }, ui, get scale() { return scale; }, set scale(v) { scale = v; } };
+window.__mw = { cam, goto, animals: Animals, setHour: (h) => { hour = h; shadowDirty = true; syncHour(); }, ui, get scale() { return scale; }, set scale(v) { scale = v; } };

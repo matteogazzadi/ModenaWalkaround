@@ -178,6 +178,7 @@ vec3 slabs(vec2 t,float fw,inout float hgt){
 
 void main(){
   int mat=int(vM.x+.5);
+  if(mat==21){float d=length(vT);if(d>1.)discard;oC=vec4(vec3(mix(.4,1.,smoothstep(.1,1.,d))),1.);return;}
   vec2 t=vT;
   vec2 dt=fwidth(t);float fw=max(dt.x,dt.y);
   vec3 a=lin(vC),emi=vec3(0);float hgt=0.,spec=.0,rough=.4,bump=.6;
@@ -238,6 +239,7 @@ void main(){
     vec2 fq=fract(q);float e=min(min(fq.x,1.-fq.x),min(fq.y,1.-fq.y));hgt=smoothstep(.0,.04+fw,e);spec=.5;bump=.3;
   }
   else if(mat==17){a=vec3(.08,.08,.09);}
+  else if(mat==20){a=lin(vC)*(.85+.3*vn(vP.xz*40.+vP.y*25.));spec=.04;}
   else if(mat==18){ // carved reliefs
     float cell=floor(t.x/.6);vec2 f=vec2(fract(t.x/.6)-.5,t.y);
     float fig=smoothstep(.55,.45,length(vec2(f.x*2.4,(f.y-3.9)*2.))+fbm(vec2(t.x*5.,t.y*5.)+cell)*.5);

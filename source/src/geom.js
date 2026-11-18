@@ -11,7 +11,7 @@ const STRIDE = 17;
 // materials (must match the M_* constants in the shader)
 const M = {
   PLAST: 0, WIN: 1, SHOP: 2, STONE: 3, MARB: 4, BRICK: 5, TILE: 6, LEAD: 7, COB: 8, SLAB: 9,
-  DARK: 10, WOOD: 11, ROSE: 12, CLOCK: 13, METAL: 14, LAMP: 15, PORF: 16, BIRD: 17, RELIEF: 18, GLASS: 19,
+  DARK: 10, WOOD: 11, ROSE: 12, CLOCK: 13, METAL: 14, LAMP: 15, PORF: 16, BIRD: 17, RELIEF: 18, GLASS: 19, FUR: 20, BLOB: 21,
 };
 
 class Mesh {

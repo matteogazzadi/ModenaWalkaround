@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const FILES = ['geom.js', 'city.js', 'shaders.js', 'audio.js', 'main.js']; // order matters
+const FILES = ['geom.js', 'city.js', 'shaders.js', 'audio.js', 'animals.js', 'main.js']; // order matters
 const readable = process.argv.includes('--readable');
 
 let js = FILES.map((f) => readFileSync(path.join(here, 'src', f), 'utf8')).join('\n');

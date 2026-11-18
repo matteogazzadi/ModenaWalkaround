@@ -524,7 +524,7 @@ function buildCity() {
     const g = 6 + rnd() * 3; farBlock(x + g / 2, z + g / 2, x + 34 - g / 2, z + 34 - g / 2);
   }
   // street lamps in the squares
-  for (const [x, z] of [[-10, 50], [15, 50], [-30, 30], [36, 15], [50, -28], [70, -10], [-36, -16], [-36, 16], [60, 12]]) lampPost(x, z);
+  for (const [x, z] of [[-10, 50], [15, 50], [-30, 30], [36, 15], [50, -28], [70, -10], [-36, -16], [-36, 16], [58, 15.5]]) lampPost(x, z);
   // invisible walls at the edge of the walkable area
   solid(-170, -170, 170, -160); solid(-170, 160, 170, 170); solid(-170, -170, -160, 170); solid(160, -170, 170, 170);
   return G;

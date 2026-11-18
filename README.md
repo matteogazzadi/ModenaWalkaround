@@ -18,8 +18,8 @@ Ispirato a [Abyssal Garden](https://github.com/Noniv/abyssal-garden).
 
 ## Come provarlo
 
-1. Scarica [`index.html`](index.html).
-2. Aprilo con un browser recente (Chrome, Edge, Firefox, Safari): serve **WebGL2**.
+1. Scarica [`index.html`](index.html) (su GitHub: apri il file e premi *Download raw file*).
+2. Aprilo con doppio clic in un browser recente (Chrome, Edge, Firefox, Safari): serve **WebGL2**.
 3. Premi **Entra in piazza** e cammina.
 
 Funziona offline, non c'è niente da installare.
@@ -52,6 +52,9 @@ Funziona offline, non c'è niente da installare.
 - **Le vie intorno**: Via Lanfranco, Piazza della Torre, Corso Duomo, Via Castellaro, Piazza XX Settembre, Via Emilia con i portici,
   case intonacate nei colori di Modena con persiane verdi, botteghe, tetti di coppi.
 - **Luce**: sole con ombre, cielo con nuvole, foschia, tramonto dorato; di notte lampioni, finestre accese, il Duomo illuminato, stelle e luna.
+- **Animali**: passerotti che saltellano e beccano sul selciato (e volano via se ti avvicini), cani a passeggio che si fermano
+  ad annusare e ti vengono a salutare scodinzolando, gatti seduti o addormentati sotto i portici, piccioni attorno alla Ghirlandina.
+  E da qualche parte, in un posto diverso ogni volta, **una foca**. Una sola. Trovala.
 - **Suoni** sintetizzati dal vivo: il brusio della città, i piccioni, i passi sulla pietra e le campane della Ghirlandina.
 
 È una ricostruzione libera: i monumenti sono modellati con cura, gli isolati intorno seguono solo a grandi linee

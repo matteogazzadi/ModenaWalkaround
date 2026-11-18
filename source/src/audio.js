@@ -62,6 +62,19 @@ const audio = (() => {
     const g = ac.createGain(); g.gain.setValueAtTime(run ? 0.14 : 0.09, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
     s.connect(f).connect(g).connect(out); s.start(t, Math.random() * 1.5, 0.1);
   }
+  // animal voices; vol 0..1 already includes distance
+  function voice(type, f0, f1, dur, vol, fq, t0 = 0) {
+    if (!ac || !on || vol <= 0) return;
+    const t = ac.currentTime + t0, o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    f.type = 'bandpass'; f.frequency.value = fq; f.Q.value = 1.4;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + Math.min(0.03, dur / 4)); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    o.connect(f).connect(g).connect(out); o.start(t); o.stop(t + dur + 0.05);
+  }
+  const bark = (v) => { v = Math.max(0, v) * 0.35; voice('sawtooth', 420, 260, 0.14, v, 900); voice('sawtooth', 400, 240, 0.16, v, 900, 0.22); };
+  const meow = (v) => { v = Math.max(0, v) * 0.18; voice('sawtooth', 520, 760, 0.25, v, 1400); voice('sawtooth', 760, 430, 0.4, v, 1300, 0.22); };
+  const chirp = (v) => { for (let i = 0; i < 4; i++) voice('sine', 4200 + Math.random() * 800, 6200, 0.06, v * 0.05, 5000, i * 0.09 + Math.random() * 0.04); };
+  const arf = (v) => { v = Math.max(0, v) * 0.3; for (let i = 0; i < 3; i++) voice('sawtooth', 300, 170, 0.18, v, 650, i * 0.3); };
   function toggle() { on = !on; if (out) out.gain.setTargetAtTime(on ? 0.8 : 0, ac.currentTime, 0.1); }
-  return { start, bells, step, toggle };
+  return { start, bells, step, toggle, bark, meow, chirp, arf };
 })();
